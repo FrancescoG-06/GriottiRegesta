@@ -1,0 +1,16 @@
+# Dependencies
+node_modules
+
+# Variabili d'ambiente (credenziali del database) — non versionare mai
+.env
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
