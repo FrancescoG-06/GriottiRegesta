@@ -122,32 +122,32 @@ Altre decisioni rilevanti:
 
 ```
 suppliers                articles
-┌────────────┐          ┌────────────────────┐
+┌────────────┐          ┌─────────────────────┐
 │ id (PK)    │          │ id (PK)             │
 │ name       │          │ name                │
 └─────┬──────┘          │ image_url           │
       │                 └──────────┬──────────┘
       │                            │
       │        supplier_articles   │
-      │        ┌──────────────────┴────┐
-      └───────▶│ id (PK)              │
-               │ supplier_id (FK)      │
-               │ article_id (FK)       │
-               │ stock_quantity        │
+      │        ┌───────────────────┴───────┐
+      └───────▶│ id (PK)                  │
+               │ supplier_id (FK)          │
+               │ article_id (FK)           │
+               │ stock_quantity            │
                │ unit_price  DECIMAL(10,2) │
-               │ delivery_date         │
-               └──────────┬────────────┘
+               │ delivery_date             │
+               └──────────┬────────────────┘
                           │
                  discounts│
-               ┌──────────┴──────────────────┐
+               ┌──────────┴───────────────────┐
                │ id (PK)                      │
                │ supplier_article_id (FK)     │
                │ discount_type  ENUM(         │  'QUANTITY' | 'TOTAL_AMOUNT' | 'MONTH'
                │   'QUANTITY','TOTAL_AMOUNT', │
                │   'MONTH')                   │
-               │ threshold_value               │
+               │ threshold_value              │
                │ percentage                   │
-               └───────────────────────────────┘
+               └──────────────────────────────┘
 ```
 
 `supplier_articles` è la tabella ponte che modella "l'offerta" di un
