@@ -41,15 +41,17 @@ app.get('/api/articles', async (req, res) => {
 /**
  * @route GET /api/articles/:id/suppliers
  * @desc  Restituisce, per un singolo articolo, l'elenco dei fornitori che
- *        lo vendono (nome, stock, prezzo unitario, data di consegna),
- *        ordinati dal più economico al più caro. Usato dalla modale
- *        "Fornitori e Stock Disponibile" del Catalog.
+ *        lo vendono (id e nome fornitore, stock, prezzo unitario, data di
+ *        consegna), ordinati dal più economico al più caro. Usato dalla
+ *        modale "Fornitori e Stock Disponibile" del Catalog, da cui è
+ *        anche possibile acquistare direttamente cliccando su un'offerta
+ *        (per questo serve anche supplier_id, non solo il nome).
  */
 app.get('/api/articles/:id/suppliers', async (req, res) => {
   const { id } = req.params;
   try {
     const query = `
-      SELECT s.name AS supplier_name, sa.stock_quantity, sa.unit_price, sa.delivery_date
+      SELECT s.id AS supplier_id, s.name AS supplier_name, sa.stock_quantity, sa.unit_price, sa.delivery_date
       FROM supplier_articles sa
       JOIN suppliers s ON sa.supplier_id = s.id
       WHERE sa.article_id = ?

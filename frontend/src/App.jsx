@@ -52,6 +52,11 @@ export default function App() {
   const [catalogSuppliers, setCatalogSuppliers] = useState([]); // fornitori disponibili per quell'articolo
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
 
+  // Popup di acquisto rapido: aperto cliccando su un'offerta fornitore
+  // dentro la modale "Fornitori e Stock Disponibile" del Catalog.
+  const [quickBuyOffer, setQuickBuyOffer] = useState(null); // offerta fornitore selezionata (o null se il popup è chiuso)
+  const [quickBuyQuantity, setQuickBuyQuantity] = useState(1);
+
   const [toast, setToast] = useState(null); // messaggio della notifica toast in basso a destra (null = nascosta)
 
   // ---------------------------------------------------------------------
@@ -400,6 +405,46 @@ export default function App() {
   const closeCatalogModal = () => {
     setSelectedCatalogItem(null);
     setCatalogSuppliers([]);
+    setQuickBuyOffer(null); // chiude anche l'eventuale popup di acquisto rapido ancora aperto
+  };
+
+  /** Apre il popup di acquisto rapido per un'offerta fornitore scelta nella modale del Catalog. */
+  const openQuickBuy = (offer) => {
+    setQuickBuyOffer(offer);
+    setQuickBuyQuantity(1);
+  };
+
+  const closeQuickBuy = () => setQuickBuyOffer(null);
+
+  /**
+   * Conferma l'acquisto rapido dal Catalog: aggiunge al carrello l'offerta
+   * selezionata per la quantità scelta, senza passare dal form di calcolo
+   * preventivo degli Orders (quindi senza applicare eventuali sconti,
+   * come per il riordino rapido di Insights). La quantità viene comunque
+   * limitata allo stock disponibile per quell'offerta.
+   */
+  const confirmQuickBuy = () => {
+    if (!quickBuyOffer || !selectedCatalogItem) return;
+    const maxQty = Number(quickBuyOffer.stock_quantity) || 1;
+    const qty = Math.min(Math.max(1, Number(quickBuyQuantity) || 1), maxQty);
+    const unitPrice = Number(quickBuyOffer.unit_price) || 0;
+
+    const newItem = {
+      cart_id: Date.now() + Math.random(),
+      article_id: selectedCatalogItem.id,
+      article_name: selectedCatalogItem.name,
+      supplier_id: quickBuyOffer.supplier_id,
+      supplier_name: quickBuyOffer.supplier_name,
+      unit_price: unitPrice,
+      quantity: qty,
+      total_price: Math.round(unitPrice * qty * 100) / 100,
+      delivery_date: quickBuyOffer.delivery_date
+    };
+
+    setCart((prev) => [...prev, newItem]);
+    setToast(`🛒 ${selectedCatalogItem.name} aggiunto al carrello!`);
+    setTimeout(() => setToast(null), 3000);
+    closeQuickBuy();
   };
 
   // ---------------------------------------------------------------------
@@ -1030,35 +1075,94 @@ export default function App() {
               {loadingSuppliers ? (
                 <p>Caricamento fornitori...</p>
               ) : (
-                <table className="modal-table">
-                  <thead>
-                    <tr>
-                      <th>Fornitore</th>
-                      <th>Prezzo Unitario</th>
-                      <th>Stock (Pz)</th>
-                      <th>Data Consegna</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {catalogSuppliers.length > 0 ? (
-                      catalogSuppliers.map((sup, idx) => (
-                        <tr key={idx}>
-                          <td><strong>{sup.supplier_name}</strong></td>
-                          <td>${sup.unit_price}</td>
-                          <td>
-                            <span className={`stock-badge ${sup.stock_quantity > 100 ? 'stock-high' : 'stock-low'}`}>
-                              {sup.stock_quantity}
-                            </span>
-                          </td>
-                          <td>{formatDate(sup.delivery_date)}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr><td colSpan="4">Nessun fornitore trovato.</td></tr>
-                    )}
-                  </tbody>
-                </table>
+                <>
+                  <p className="product-meta" style={{marginBottom: '8px'}}>Clicca su un fornitore per acquistare direttamente da qui.</p>
+                  <table className="modal-table">
+                    <thead>
+                      <tr>
+                        <th>Fornitore</th>
+                        <th>Prezzo Unitario</th>
+                        <th>Stock (Pz)</th>
+                        <th>Data Consegna</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {catalogSuppliers.length > 0 ? (
+                        catalogSuppliers.map((sup, idx) => (
+                          <tr key={idx} className="clickable-row" onClick={() => openQuickBuy(sup)}>
+                            <td><strong>{sup.supplier_name}</strong></td>
+                            <td>${sup.unit_price}</td>
+                            <td>
+                              <span className={`stock-badge ${sup.stock_quantity > 100 ? 'stock-high' : 'stock-low'}`}>
+                                {sup.stock_quantity}
+                              </span>
+                            </td>
+                            <td>{formatDate(sup.delivery_date)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr><td colSpan="4">Nessun fornitore trovato.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= POPUP: acquisto rapido di un'offerta fornitore dal Catalog ================= */}
+      {quickBuyOffer && selectedCatalogItem && (
+        <div className="modal-overlay" onClick={closeQuickBuy}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={closeQuickBuy}>×</button>
+
+            <div className="modal-header">
+              <img src={selectedCatalogItem.image_url} alt={selectedCatalogItem.name} className="modal-product-img"/>
+              <div>
+                <h2 style={{marginBottom: '4px'}}>{selectedCatalogItem.name}</h2>
+                <p className="product-meta">Fornitore: <strong>{quickBuyOffer.supplier_name}</strong></p>
+              </div>
+            </div>
+
+            <div className="modal-body">
+              <div className="quick-buy-summary">
+                <div className="summary-col">
+                  <span className="summary-label">PREZZO UNITARIO</span>
+                  <span className="summary-value highlight">${Number(quickBuyOffer.unit_price).toFixed(2)}</span>
+                </div>
+                <div className="summary-col">
+                  <span className="summary-label">STOCK DISPONIBILE</span>
+                  <span className="summary-value">{quickBuyOffer.stock_quantity} pz</span>
+                </div>
+                <div className="summary-col">
+                  <span className="summary-label">CONSEGNA STIMATA</span>
+                  <span className="summary-value">{formatDate(quickBuyOffer.delivery_date)}</span>
+                </div>
+              </div>
+
+              <div className="input-group" style={{marginTop: '20px'}}>
+                <label>Quantità</label>
+                <input
+                  type="number"
+                  min="1"
+                  max={quickBuyOffer.stock_quantity}
+                  value={quickBuyQuantity}
+                  onChange={(e) => setQuickBuyQuantity(e.target.value)}
+                />
+              </div>
+
+              <div className="cart-total-row" style={{marginTop: '16px'}}>
+                <span>Totale</span>
+                <strong>
+                  ${(Math.min(Math.max(1, Number(quickBuyQuantity) || 1), Number(quickBuyOffer.stock_quantity) || 1) * Number(quickBuyOffer.unit_price)).toFixed(2)}
+                </strong>
+              </div>
+
+              <button className="btn-checkout" style={{marginTop: '20px'}} onClick={confirmQuickBuy}>
+                🛒 Aggiungi al Carrello
+              </button>
             </div>
           </div>
         </div>

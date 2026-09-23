@@ -853,6 +853,35 @@ body {
   border-bottom: 1px solid #eaedf1;
 }
 
+.modal-table tbody tr.clickable-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.modal-table tbody tr.clickable-row:hover {
+  background-color: #f8fafc;
+}
+
+.dark-mode .modal-table tbody tr.clickable-row:hover {
+  background-color: #21262d;
+}
+
+/* Riepilogo prezzo/stock/consegna nel popup di acquisto rapido (Catalog) */
+.quick-buy-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #eaedf1;
+}
+
+.dark-mode .quick-buy-summary {
+  background: #161b22;
+  border-color: #30363d;
+}
+
 .stock-badge {
   padding: 4px 8px;
   border-radius: 12px;
@@ -1643,6 +1672,10 @@ body {
   .insight-item-actions {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .quick-buy-summary {
+    grid-template-columns: 1fr;
   }
 }
 

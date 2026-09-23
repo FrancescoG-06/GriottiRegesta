@@ -15,7 +15,13 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  // Le colonne DATE/DATETIME vengono restituite come stringhe "as-is"
+  // invece che come oggetti Date JS: senza questa opzione mysql2 le
+  // costruisce in orario locale e, una volta serializzate in JSON,
+  // "scivolano" al giorno prima nei fusi orari avanti rispetto a UTC
+  // (es. Italia) — bug osservato nella colonna delivery_date.
+  dateStrings: true
 });
 
 module.exports = pool;
