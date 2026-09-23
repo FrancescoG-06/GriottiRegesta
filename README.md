@@ -19,7 +19,8 @@ replenishment"* di Regesta.
 7. [Guida all'uso, con casi di esempio](#guida-alluso-con-casi-di-esempio)
 8. [Analisi funzionalità (formato BDD)](#analisi-funzionalità-formato-bdd)
 9. [Limiti noti e possibili estensioni](#limiti-noti-e-possibili-estensioni)
-10. [Struttura del repository](#struttura-del-repository)
+10. [Strumenti AI utilizzati](#strumenti-ai-utilizzati)
+11. [Struttura del repository](#struttura-del-repository)
 
 ---
 
@@ -416,6 +417,21 @@ consapevoli fatte per stare nei tempi dell'esercizio:
   la traduzione in una suite eseguibile (es. Jest per la logica di calcolo
   in `server.js`, isolando la funzione di scoring dalle query MySQL) è un
   passo naturale successivo.
+
+## Strumenti AI utilizzati
+
+Come richiesto dalle linee guida del test, dichiaro quali strumenti di AI ho
+usato nello sviluppo e in che fase:
+
+- **Google Gemini** — usato nella fase iniziale per l'organizzazione del
+  progetto e per i primi prototipi (struttura generale di frontend e
+  backend, prima bozza delle pagine e degli endpoint).
+- **Claude (Anthropic)** — usato nella fase successiva per revisionare e
+  rifinire quanto prodotto: correzione di bug (es. calcolo del preventivo,
+  formattazione delle date, allineamento del pannello di debug all'ENUM
+  reale del database), aggiunta di funzionalità (History, Insights,
+  layout responsive, acquisto rapido dal Catalog), commenti al codice e
+  stesura di questo README.
 
 ## Struttura del repository
 
