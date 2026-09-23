@@ -70,14 +70,28 @@ app.get('/api/articles/:id/suppliers', async (req, res) => {
  * @desc  Calcola il preventivo di acquisto di un articolo confrontando
  *        tutti i fornitori che lo vendono: per ciascuno determina se ha
  *        stock sufficiente, se la consegna arriva entro la deadline
- *        richiesta, il prezzo totale (con eventuale sconto per quantità
- *        applicato) e i giorni di spedizione stimati. Tra i fornitori
- *        idonei individua il più economico, il più veloce e — tramite un
+ *        richiesta, il prezzo totale (con gli eventuali sconti applicati)
+ *        e i giorni di spedizione stimati. Tra i fornitori idonei
+ *        individua il più economico, il più veloce e — tramite un
  *        punteggio pesato configurabile dal client (`slider_position`) —
  *        il miglior compromesso prezzo/tempo ("Best Value").
+ *
+ *        Sconti: i tre tipi dell'ENUM discounts.discount_type vengono
+ *        valutati indipendentemente e, se applicabili, SOMMATI tra loro
+ *        (come nell'esempio della consegna originale: "5% discount for
+ *        orders over 1000€" + "additional discount of 2% for orders
+ *        placed in september" = 7% totale a settembre). All'interno dello
+ *        stesso tipo (es. più soglie di quantità) si prende solo la
+ *        percentuale migliore tra quelle raggiunte, non la somma.
+ *          - QUANTITY:     soglia raggiunta se quantity >= threshold_value
+ *          - TOTAL_AMOUNT: soglia raggiunta se (quantity × prezzo unitario,
+ *                           NON scontato) >= threshold_value
+ *          - MONTH:        soglia raggiunta se il mese di order_date
+ *                           coincide con threshold_value (1 = gennaio,
+ *                           12 = dicembre)
  * @body  {number} article_id       id dell'articolo richiesto
  * @body  {number} quantity         quantità da ordinare
- * @body  {string} order_date       data dell'ordine (YYYY-MM-DD), usata per calcolare i giorni di spedizione
+ * @body  {string} order_date       data dell'ordine (YYYY-MM-DD), usata per calcolare i giorni di spedizione e lo sconto stagionale
  * @body  {string} target_date      deadline entro cui l'ordine deve arrivare (YYYY-MM-DD)
  * @body  {number} [slider_position=3] 1..5: bilanciamento tra risparmio (1) e velocità (5) nel punteggio "Best Value"
  * @returns {{ results: object[] }} un elemento per ogni fornitore, con i flag hasEnoughStock/arrivesInTime/isCheapest/isFastest/isBestValue
@@ -99,15 +113,15 @@ app.post('/api/orders/calculate', async (req, res) => {
     const pesoCosto = pesi[slider_position]?.costo ?? 0.5;
     const pesoTempo = pesi[slider_position]?.tempo ?? 0.5;
     const targetDateObj = new Date(target_date);
+    // Mese dell'ordine (1-12), in UTC per coerenza con le date "YYYY-MM-DD"
+    // restituite dal DB (vedi dateStrings:true in db.js) ed evitare derive di fuso orario.
+    const orderMonth = new Date(order_date).getUTCMonth() + 1;
 
     // Recupera ogni offerta fornitore per l'articolo richiesto, insieme
-    // all'eventuale sconto quantità applicabile: la subquery prende lo
-    // sconto più alto tra quelli il cui threshold_value è raggiunto dalla
-    // quantità ordinata (MAX(percentage) ... threshold_value <= ?).
-    // NOTA: discounts.discount_type è un ENUM('QUANTITY','TOTAL_AMOUNT','MONTH');
-    // questa query considera solo 'QUANTITY' — gli altri due tipi possono
-    // essere salvati (es. dal pannello di debug) ma non vengono ancora
-    // applicati nel calcolo del preventivo.
+    // alle percentuali di sconto applicabili per ciascuno dei tre tipi
+    // (una subquery per tipo, ognuna prende la percentuale migliore tra
+    // le soglie raggiunte). La subquery TOTAL_AMOUNT confronta la soglia
+    // con quantity * sa.unit_price (il prezzo pieno, non ancora scontato).
     const queryStr = `
       SELECT
         s.id AS supplier_id,
@@ -120,14 +134,23 @@ app.post('/api/orders/calculate', async (req, res) => {
          FROM discounts d
          WHERE d.supplier_article_id = sa.id
            AND d.discount_type = 'QUANTITY'
-           AND d.threshold_value <= ?) AS discount_percentage
+           AND d.threshold_value <= ?) AS quantity_discount_percentage,
+        (SELECT MAX(percentage)
+         FROM discounts d
+         WHERE d.supplier_article_id = sa.id
+           AND d.discount_type = 'TOTAL_AMOUNT'
+           AND d.threshold_value <= sa.unit_price * ?) AS total_amount_discount_percentage,
+        (SELECT MAX(percentage)
+         FROM discounts d
+         WHERE d.supplier_article_id = sa.id
+           AND d.discount_type = 'MONTH'
+           AND d.threshold_value = ?) AS month_discount_percentage
       FROM supplier_articles sa
       JOIN suppliers s ON sa.supplier_id = s.id
       WHERE sa.article_id = ?
     `;
-    
-    // NOTA: Passiamo 'quantity' come primo parametro per la subquery, e 'article_id' come secondo
-    const [fornitori] = await pool.query(queryStr, [quantity, article_id]);
+
+    const [fornitori] = await pool.query(queryStr, [quantity, quantity, orderMonth, article_id]);
 
     // Per ogni fornitore calcola idoneità (stock + tempistica) e prezzo finale scontato.
     const listaCompleta = fornitori.map((f) => {
@@ -141,7 +164,18 @@ app.post('/api/orders/calculate', async (req, res) => {
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
       // --- CALCOLO SCONTI ---
-      const discountPct = Number(f.discount_percentage) || 0;
+      // I tre tipi di sconto si sommano tra loro (vedi JSDoc dell'endpoint).
+      const quantityDiscountPct = Number(f.quantity_discount_percentage) || 0;
+      const totalAmountDiscountPct = Number(f.total_amount_discount_percentage) || 0;
+      const monthDiscountPct = Number(f.month_discount_percentage) || 0;
+      const discountPct = quantityDiscountPct + totalAmountDiscountPct + monthDiscountPct;
+
+      const discountTypesApplied = [
+        quantityDiscountPct > 0 && 'QUANTITY',
+        totalAmountDiscountPct > 0 && 'TOTAL_AMOUNT',
+        monthDiscountPct > 0 && 'MONTH'
+      ].filter(Boolean);
+
       const originalTotalPrice = quantity * f.unit_price;
       const unitPriceScontato = f.unit_price * (1 - discountPct / 100);
       const totalPrice = Math.round(quantity * unitPriceScontato * 100) / 100;
@@ -156,6 +190,7 @@ app.post('/api/orders/calculate', async (req, res) => {
         totalPrice,
         estimated_delivery_date: formattedDeliveryDate,
         min_shipping_days: diffDays,
+        discount_types_applied: discountTypesApplied,
         hasEnoughStock,
         arrivesInTime,
         discount_percentage: discountPct
@@ -455,14 +490,19 @@ app.post('/api/db/reset', async (req, res) => {
       (11, 'Monitor 27 Pollici 4K', 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?q=80&w=400&auto=format&fit=crop')
     `);
 
-    // Ri-popolamento sconti di default
+    // Ri-popolamento sconti di default. Le ultime due righe (supplier_article_id 5,
+    // FlashShip 24h su "Carta A4") ricreano l'esempio della consegna originale:
+    // 5% per ordini oltre 1000€ + 2% aggiuntivo per ordini a settembre, sconti
+    // che si sommano tra loro (vedi POST /api/orders/calculate).
     await connection.query(`
       INSERT INTO discounts (supplier_article_id, discount_type, threshold_value, percentage) VALUES
       (1, 'QUANTITY', 50, 5.00),
       (1, 'QUANTITY', 100, 10.00),
       (2, 'QUANTITY', 150, 15.00),
       (3, 'QUANTITY', 50, 8.00),
-      (4, 'QUANTITY', 200, 20.00)
+      (4, 'QUANTITY', 200, 20.00),
+      (5, 'TOTAL_AMOUNT', 1000, 5.00),
+      (5, 'MONTH', 9, 2.00)
     `);
     // Ri-popolamento fornitori
     await connection.query(`

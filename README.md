@@ -159,7 +159,9 @@ avere condizioni di sconto diverse su prodotti diversi. `discount_type` è
 un vero ENUM SQL (non una stringa libera): i tre valori ammessi
 corrispondono esattamente alle tre modalità di sconto descritte nella
 consegna originale (quantità ordinata, valore totale dell'ordine,
-periodo/stagione).
+periodo/stagione), e possono anche combinarsi tra loro — vedi
+[Riferimento API](#riferimento-api) e il caso d'esempio 3 nella guida
+all'uso.
 
 Lo script di creazione completo (con vincoli di chiave esterna e indici) è
 in [`backend/schema.sql`](backend/schema.sql), ricostruito da un dump reale
@@ -324,6 +326,31 @@ necessaria):
   stesso punteggio "Best Value" (un caso limite in cui prezzo e velocità
   si compensano esattamente) e vengono quindi evidenziati entrambi.
 
+### Caso d'esempio 3 — sconti che si sommano (valore ordine + stagionale)
+
+Ricrea da vicino l'esempio della consegna originale (Supplier 3: "5%
+discount for orders over 1000€" + "additional discount of 2% for orders
+placed in september"), usando **FlashShip 24h** su *Carta A4 Multiuso 80g*,
+che nei dati precaricati ha entrambi gli sconti configurati.
+
+**Input**
+- Articolo: *Carta A4 Multiuso 80g (Box 5 Risme)*, fornitore **FlashShip 24h** (33,00 €/pz, stock 150, consegna 2025-09-06)
+- Quantità: **40** (totale non scontato: 1.320,00 €, sopra la soglia di 1.000 €)
+- Deadline: **2025-09-10** (qualunque data successiva al 06/09 va bene)
+
+**Output atteso**
+
+| Data ordine | Sconti applicati | Prezzo unitario | Totale |
+|-------------|-------------------|-----------------:|-------:|
+| **2025-09-01** (settembre) | valore ordine 5% + stagionale 2% = **7%** | 30,69 € | **1.227,60 €** |
+| **2025-11-01** (fuori stagione) | solo valore ordine 5% | 31,35 € | **1.254,00 €** |
+
+La card del fornitore mostra la pillola "🏷️ Sconto 7% applicato (valore
+ordine + stagionale)" solo nel primo caso: i due sconti sono definiti
+indipendentemente in `discounts` ma il backend li somma automaticamente
+quando entrambe le condizioni sono soddisfatte (vedi
+[Riferimento API](#riferimento-api)).
+
 ### Altre sezioni
 
 - **Catalog**: tab *Prodotti* per sfogliare il catalogo e aprire il
@@ -378,6 +405,12 @@ Scenario: Lo sconto per quantità viene applicato quando la soglia è raggiunta
   Then il prezzo totale riflette lo sconto del 5%
     And viene mostrato sia il prezzo originale sia quello scontato
 
+Scenario: Sconti di tipo diverso si sommano tra loro
+  Given un fornitore offre il 5% di sconto per ordini oltre 1000€
+    And lo stesso fornitore offre il 2% di sconto aggiuntivo per ordini a settembre
+  When ordino a settembre una quantità il cui valore supera 1000€
+  Then il prezzo totale riflette uno sconto combinato del 7%
+
 Scenario: Viene evidenziato il fornitore più economico
   Given più fornitori idonei per lo stesso ordine
   When confronto i risultati
@@ -395,12 +428,6 @@ Scenario: Un fornitore più veloce viene preferito a uno più economico
 Documentati qui in modo esplicito, come parte delle scelte tecniche
 consapevoli fatte per stare nei tempi dell'esercizio:
 
-- **Sconti per valore ordine e stagionali non ancora applicati al
-  calcolo**: il modello dati e il pannello di debug supportano già i
-  valori ENUM `'TOTAL_AMOUNT'` (valore ordine) e `'MONTH'` (stagionale) di
-  `discounts.discount_type`, ma `POST /api/orders/calculate` oggi
-  considera solo `'QUANTITY'`. Estensione naturale: aggiungere le due
-  condizioni nella query/nel calcolo del prezzo scontato.
 - **Storico ordini in memoria**: `orderHistoryDB` in `server.js` è un
   array JS, non una tabella — si azzera a ogni riavvio del backend (e
   viene svuotato esplicitamente da un reset del database). Per un uso in

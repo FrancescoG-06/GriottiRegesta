@@ -475,6 +475,10 @@ export default function App() {
   // Etichette leggibili per le 5 posizioni dello slider "Preferenze".
   const sliderLabels = { 1: '100% Economico', 2: 'Prevalenza Prezzo', 3: 'Bilanciato', 4: 'Prevalenza Velocità', 5: '100% Velocità' };
 
+  // Etichette leggibili per i tipi di sconto (ENUM discounts.discount_type):
+  // possono sommarsi tra loro, vedi POST /api/orders/calculate nel backend.
+  const discountTypeLabels = { QUANTITY: 'quantità', TOTAL_AMOUNT: 'valore ordine', MONTH: 'stagionale' };
+
   /** Converte una data in formato ISO (YYYY-MM-DD) in formato italiano (DD/MM/YYYY). */
   const formatDate = (dateString) => {
     if (!dateString) return '';
@@ -767,7 +771,10 @@ export default function App() {
                                   {f.discount_percentage > 0 && (
                                     <div className="discounts-pills">
                                       <span className="discount-pill" style={{ background: '#ecfdf3', color: '#027a48', border: '1px solid #abefc6' }}>
-                                        🏷️ Sconto {f.discount_percentage}% per q.tà applicato
+                                        🏷️ Sconto {f.discount_percentage}% applicato
+                                        {f.discount_types_applied?.length > 0 && (
+                                          ` (${f.discount_types_applied.map((t) => discountTypeLabels[t] || t).join(' + ')})`
+                                        )}
                                       </span>
                                     </div>
                                   )}
@@ -1266,15 +1273,29 @@ export default function App() {
                     <div className="discount-options-row animated-expand">
                       <div className="input-group">
                         <label>Tipo Sconto</label>
-                        <select value={debugDiscountType} onChange={(e) => setDebugDiscountType(e.target.value)}>
+                        <select value={debugDiscountType} onChange={(e) => { setDebugDiscountType(e.target.value); setDebugThreshold(''); }}>
                           <option value="QUANTITY">Quantità</option>
                           <option value="TOTAL_AMOUNT">Valore Ordine</option>
                           <option value="MONTH">Data/Stagione</option>
                         </select>
                       </div>
                       <div className="input-group">
-                        <label>Soglia</label>
-                        <input type="number" min="0" value={debugThreshold} onChange={(e) => setDebugThreshold(e.target.value)} required={debugHasDiscount} />
+                        {debugDiscountType === 'MONTH' ? (
+                          <>
+                            <label>Mese</label>
+                            <select value={debugThreshold} onChange={(e) => setDebugThreshold(e.target.value)} required={debugHasDiscount}>
+                              <option value="">Seleziona mese...</option>
+                              {['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'].map((mese, i) => (
+                                <option key={i} value={i + 1}>{mese}</option>
+                              ))}
+                            </select>
+                          </>
+                        ) : (
+                          <>
+                            <label>Soglia {debugDiscountType === 'TOTAL_AMOUNT' ? '(€)' : '(pz)'}</label>
+                            <input type="number" min="0" step={debugDiscountType === 'TOTAL_AMOUNT' ? '0.01' : '1'} value={debugThreshold} onChange={(e) => setDebugThreshold(e.target.value)} required={debugHasDiscount} />
+                          </>
+                        )}
                       </div>
                       <div className="input-group">
                         <label>Sconto (%)</label>
